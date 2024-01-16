@@ -15,13 +15,15 @@ class TrackingJPDA:
         self.max_y_position = 300
         self.location_scale = 1000
         self.tomato_number_scale = 30
+        self.association_threshold = 0.6
         self.track_timeout = 15  # [sec]
+        self.tracks_to_remove = set()  # using a set to avoid duplicates of removal requests
 
-    def clean_old_tracks(self, frame_timestamp):
-        # delete tracks that were not seen for too long
-        for track_id, track in self.tracks.items():
-            if frame_timestamp - track['last_seen'] < self.track_timeout:
-                self.remove_track(track_id)
+    def create_new_track(self, new_track):
+        # get the largest track id, and create a new track with all the relevant parameters
+        self.tracks[self.vacant_id] = {'last_seen': new_track['timestamp'], 'visible': True,
+                                       'params': {k: new_track[k] for k in ('position', 'tomatoes', 'confidence')}}
+        self.vacant_id += 1
 
     def associate(self, existing_track_id, new_timestamp, new_track_data):
         # initial implementation: just override existing data for each track.
@@ -30,25 +32,22 @@ class TrackingJPDA:
         self.tracks[existing_track_id]['last_seen'] = new_timestamp
         self.tracks[existing_track_id]['params'] = new_track_data
 
-    def create_new_track(self, frame_timestamp, new_track_data):
-        # get the largest track id, and create a new track with all the relevant parameters
-        self.tracks[self.vacant_id] = {'last_seen': frame_timestamp, 'params': new_track_data, 'visible': True}
-        self.vacant_id += 1
-
-    def remove_track(self, track_id):
-        self.tracks.pop(track_id)
-
-    def update_predictions(self, new_mileage):
+    def update_predictions(self, new_mileage, new_timestamp):
         # update the expected location, based on the distance driven since the last epoch
         diff_mileage = new_mileage - self.mileage
         for track_id, track in self.tracks.items():
-            if self.min_y_position < track['params']['position'][1] + diff_mileage < self.max_y_position:
+            if (self.min_y_position < track['params']['position'][1] + diff_mileage < self.max_y_position and
+                    new_timestamp - track['last_seen'] < self.track_timeout):
                 track['params']['position'][1] += diff_mileage
             else:
-                # outside relevant visible window
-                self.remove_track(track_id)
+                # outside relevant visible window, or too old
+                self.tracks_to_remove.add(track_id)
 
         self.mileage = new_mileage  # update the mileage
+
+    def clean_old_tracks(self):
+        for track_id in self.tracks_to_remove:
+            self.tracks.pop(track_id)
 
     # Example: Normalization functions for 3D location, score, and number of sub-objects
     def normalize_3d_location(self, location):
@@ -80,16 +79,16 @@ class TrackingJPDA:
         for i, track in enumerate(self.tracks.values()):
             for j in range(num_detected_objects):
                 predicted_location = self.normalize_3d_location(track['params']['position'])
-                detected_location = self.normalize_3d_location(detected_features[j][:3])
+                detected_location = self.normalize_3d_location(detected_features[j]['position'])
                 location_distance = np.linalg.norm(predicted_location - detected_location)
 
                 # Example: Assuming predicted_features and detected_features contain score and sub-object count
                 predicted_score = track['params']['confidence']
-                detected_score = detected_features[j][3]
+                detected_score = detected_features[j]['confidence']
                 score_distance = abs(predicted_score - detected_score)
 
                 predicted_sub_object_count = self.normalize_sub_object_count(track['params']['tomatoes'])
-                detected_sub_object_count = self.normalize_sub_object_count(detected_features[j][4])
+                detected_sub_object_count = self.normalize_sub_object_count(detected_features[j]['tomatoes'])
                 sub_object_count_distance = abs(predicted_sub_object_count - detected_sub_object_count)
 
                 # Combine distances using a weighted sum or other strategy
@@ -108,14 +107,21 @@ class TrackingJPDA:
             where probability_matrix[i][j] is the likelihood of detecting predicted object i with detected object j.
             joint_probabilities = calculate_joint_probabilities(probability_matrix)
             """
-        all_associations = list(itertools.product(range(num_detected_objects), repeat=num_predicted_objects))
 
         joint_probabilities = likelihood_matrix / np.sum(likelihood_matrix, axis=1, keepdims=True)
 
         return joint_probabilities
 
-    def tracking_iteration(self, detections, threshold):
+    def tracking_iteration(self, detections):
         # Perform JPDA calculations to obtain joint probabilities
+
+        # self.update_predictions  # Will add later
+
+        if len(self.tracks) == 0:  # for a case where there are no existing tracks
+            for i in range(len(detections)):
+                self.create_new_track(detections[i])
+            return
+        # if there are tracks, create the probability matrix for them
         joint_probabilities = self.calculate_measurement_likelihoods(detections)
 
         # Iterate through predicted objects
@@ -124,14 +130,16 @@ class TrackingJPDA:
             best_association_index = np.argmax(joint_probabilities[i, :])
 
             # Check if the highest probability is above the threshold
-            if joint_probabilities[i, best_association_index] > threshold:
+            if joint_probabilities[i, best_association_index] > self.association_threshold:
                 # Associate the prediction with the corresponding detection
                 self.associate(self.tracks[best_association_index], detections[i])
             else:
                 # If probability is below threshold, consider it a new track
                 self.create_new_track(detections[i])
 
-        # Manage tracks (e.g., update existing tracks, handle occlusion, etc.)
+        # we take the timestamp from one of the detections, but we need to handle a case where there are no detections
+        # so just save the frame's timestamp in the pickle
+        frame_timestamp = detections[0]['timestamp']
         self.clean_old_tracks()
 
 
@@ -141,6 +149,7 @@ def load_pickle_file(filename):
     return file_content
 
 
+jpda = TrackingJPDA()
 folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
 folder_path = Path(folder_name)
 
@@ -149,7 +158,9 @@ frames = []
 
 for file in file_list:
     if file.suffix == '.pkl':
-        frames.append(load_pickle_file(file))
+        frame_detections = load_pickle_file(file)
+        jpda.tracking_iteration(frame_detections)
+        frames.append(frame_detections)
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')

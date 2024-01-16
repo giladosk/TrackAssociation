@@ -165,7 +165,8 @@ file_list = list(folder_path.iterdir())
 frames = []
 
 for file in file_list:
-    frames.append(load_pickle_file(file))
+    if file.suffix == '.pkl':
+        frames.append(load_pickle_file(file))
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')

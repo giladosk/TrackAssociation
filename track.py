@@ -5,8 +5,8 @@ import pickle
 import matplotlib.pyplot as plt
 
 
-class TrackingJPDA:
-    # Tracking using Joint Probabilistic Data Association
+class TrackingGNN:
+    # Tracking using Global Nearest Neighbor
     def __init__(self):
         self.tracks = {}
         self.vacant_id = 0
@@ -113,7 +113,7 @@ class TrackingJPDA:
         return joint_probabilities
 
     def tracking_iteration(self, detections):
-        # Perform JPDA calculations to obtain joint probabilities
+        # Perform GNN calculations to obtain probabilities
 
         # self.update_predictions  # Will add later
 
@@ -149,7 +149,7 @@ def load_pickle_file(filename):
     return file_content
 
 
-jpda = TrackingJPDA()
+jpda = TrackingGNN()
 folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
 folder_path = Path(folder_name)
 

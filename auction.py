@@ -25,7 +25,7 @@ print(f'{cost_matrix}')
 num_bidders = cost_matrix.shape[0]
 num_goods = cost_matrix.shape[1]
 
-owners_allocated_to_goods = dict.fromkeys(range(num_goods))  # TODO: handle case where num_bidders<num_goods
+owners_allocated_to_goods = dict.fromkeys(range(num_goods))
 best_prices = [0] * num_goods
 bidders_queue = list(range(num_bidders))
 # epsilon_price = round(np.log10(np.mean(cost_matrix)))

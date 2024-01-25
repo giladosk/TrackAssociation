@@ -5,7 +5,7 @@ import pickle
 import matplotlib.pyplot as plt
 
 
-class TrackingGNN:
+class Tracker:
     # Tracking using Global Nearest Neighbor
     def __init__(self):
         self.tracks = {}
@@ -100,47 +100,41 @@ class TrackingGNN:
                 # Store the likelihood in the matrix
                 likelihood_matrix[i][j] = likelihood
 
-        # Generate all possible combinations of associations
-        """
-            Example usage:
-            Assuming probability_matrix is a 2D array representing measurement likelihoods
-            where probability_matrix[i][j] is the likelihood of detecting predicted object i with detected object j.
-            joint_probabilities = calculate_joint_probabilities(probability_matrix)
-            """
+        return likelihood_matrix
 
-        joint_probabilities = likelihood_matrix / np.sum(likelihood_matrix, axis=1, keepdims=True)
-
-        return joint_probabilities
+    def associate_tracks(self, _cost_matrix):
+        return 1
 
     def tracking_iteration(self, detections):
-        # Perform GNN calculations to obtain probabilities
-
-        # self.update_predictions  # Will add later
-
-        if len(self.tracks) == 0:  # for a case where there are no existing tracks
-            for i in range(len(detections)):
-                self.create_new_track(detections[i])
-            return
-        # if there are tracks, create the probability matrix for them
-        joint_probabilities = self.calculate_measurement_likelihoods(detections)
-
-        # Iterate through predicted objects
-        for i in range(len(detections)):
-            # Find the detection with the highest association probability for the current prediction
-            best_association_index = np.argmax(joint_probabilities[i, :])
-
-            # Check if the highest probability is above the threshold
-            if joint_probabilities[i, best_association_index] > self.association_threshold:
-                # Associate the prediction with the corresponding detection
-                self.associate(self.tracks[best_association_index], detections[i])
-            else:
-                # If probability is below threshold, consider it a new track
-                self.create_new_track(detections[i])
+        # Track objects detected in the new frame probabilities
 
         # we take the timestamp from one of the detections, but we need to handle a case where there are no detections
         # so just save the frame's timestamp in the pickle
         frame_timestamp = detections[0]['timestamp']
         self.clean_old_tracks()
+        self.update_predictions(0, frame_timestamp)
+
+        if len(detections) == 0:  # if there are no detections
+            return None
+
+        if len(self.tracks) == 0:  # for a case where there are no existing tracks
+            for i in range(len(detections)):
+                self.create_new_track(detections[i])
+            return None
+
+        # if there are tracks, create the probability matrix for them
+        cost_matrix = self.calculate_measurement_likelihoods(detections)
+        association_matrix = self.associate_tracks(cost_matrix)
+
+        for detection_idx in range(len(detections)):
+            if association_matrix[:, detection_idx].sum() > 0:
+                # Associate the prediction with the corresponding valid detection
+                association_idx = association_matrix[:, detection_idx].argmax()
+                track_idx = association_idx  # TODO: relate the row idx in the matrix to idx of existing tracks
+                self.associate(self.tracks[track_idx], frame_timestamp, detections[detection_idx])
+            else:
+                # If no track could be related to this new detection,create it as a new track
+                self.create_new_track(detections[detection_idx])
 
 
 def load_pickle_file(filename):
@@ -149,7 +143,7 @@ def load_pickle_file(filename):
     return file_content
 
 
-jpda = TrackingGNN()
+tracker = Tracker()
 folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
 folder_path = Path(folder_name)
 
@@ -159,7 +153,7 @@ frames = []
 for file in file_list:
     if file.suffix == '.pkl':
         frame_detections = load_pickle_file(file)
-        jpda.tracking_iteration(frame_detections)
+        tracker.tracking_iteration(frame_detections)
         frames.append(frame_detections)
 
 fig = plt.figure()

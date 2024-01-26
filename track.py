@@ -1,5 +1,4 @@
 import numpy as np
-import itertools
 from pathlib import Path
 import pickle
 import matplotlib.pyplot as plt
@@ -49,13 +48,10 @@ class Tracker:
         for track_id in self.tracks_to_remove:
             self.tracks.pop(track_id)
 
-    # Example: Normalization functions for 3D location, score, and number of sub-objects
     def normalize_3d_location(self, location):
-        # Placeholder normalization function
         return location / self.location_scale
 
     def normalize_sub_object_count(self, tomato_count):
-        # Placeholder normalization function
         return tomato_count / self.tomato_number_scale
 
     def calculate_measurement_likelihoods(self, detected_features):
@@ -73,37 +69,86 @@ class Tracker:
             return None
 
         # Set up a matrix to store the likelihoods
-        likelihood_matrix = np.zeros((num_predicted_objects, num_detected_objects))
+        _likelihood_matrix = np.zeros((num_predicted_objects, num_detected_objects))
+        _track_idx_to_id = []  # holds the relation between track_id to the positional idx in the matrix
 
         # Calculate likelihoods based on Euclidean distance and other metrics
-        for i, track in enumerate(self.tracks.values()):
+        for i, (track_id, track_data) in enumerate(self.tracks.items()):
+            _track_idx_to_id.append(track_id)  # saves idx-id relation
             for j in range(num_detected_objects):
-                predicted_location = self.normalize_3d_location(track['params']['position'])
+                predicted_location = self.normalize_3d_location(track_data['params']['position'])
                 detected_location = self.normalize_3d_location(detected_features[j]['position'])
                 location_distance = np.linalg.norm(predicted_location - detected_location)
 
-                # Example: Assuming predicted_features and detected_features contain score and sub-object count
-                predicted_score = track['params']['confidence']
+                predicted_score = track_data['params']['confidence']
                 detected_score = detected_features[j]['confidence']
                 score_distance = abs(predicted_score - detected_score)
 
-                predicted_sub_object_count = self.normalize_sub_object_count(track['params']['tomatoes'])
+                predicted_sub_object_count = self.normalize_sub_object_count(track_data['params']['tomatoes'])
                 detected_sub_object_count = self.normalize_sub_object_count(detected_features[j]['tomatoes'])
                 sub_object_count_distance = abs(predicted_sub_object_count - detected_sub_object_count)
 
                 # Combine distances using a weighted sum or other strategy
                 total_distance = 0.8 * location_distance + 0.1 * score_distance + 0.1 * sub_object_count_distance
 
-                # Example: Using a Gaussian function to convert distance to likelihood
-                likelihood = np.exp(-0.5 * (total_distance ** 2))
+                # Using a Gaussian function to convert distance to likelihood (bigger value = more likely)
+                _likelihood_matrix[i][j] = np.exp(-0.5 * (total_distance ** 2))
 
-                # Store the likelihood in the matrix
-                likelihood_matrix[i][j] = likelihood
+        return _likelihood_matrix, _track_idx_to_id
 
-        return likelihood_matrix
+    def associate_tracks(self, _likelihood_matrix):
+        print(f'\ncost_matrix: \n{cost_matrix}\n')
 
-    def associate_tracks(self, _cost_matrix):
-        return 1
+        # rows = bidders (or owners), columns = goods
+        num_bidders = cost_matrix.shape[0]
+        num_goods = cost_matrix.shape[1]
+
+        owners_allocated_to_goods = dict.fromkeys(range(num_goods))
+        association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
+        best_prices = [0] * num_goods
+        bidders_queue = list(range(num_bidders))
+        # epsilon_price = round(np.log10(np.mean(cost_matrix)))
+        # epsilon_price = 1 / num_bidders + 1
+        # epsilon_price = 0.1
+        epsilon_price = np.mean(np.sort(cost_matrix, axis=None)) / 10
+
+        print('start bidding...')
+        iterations = 0
+        while len(bidders_queue) > 0:
+            iterations += 1
+            bidder = bidders_queue.pop(0)  # take the first bidder in line
+            print(f'{bidder=}')
+            desired_good = np.argmax(benefits := (cost_matrix[bidder, :] - best_prices))
+            price_rise = benefits[desired_good]
+            if not association_matrix[:, desired_good].any():
+                association_matrix[bidder, desired_good] = 1  # first time assignment of a good
+                best_prices[desired_good] += epsilon_price
+            if price_rise > epsilon_price and association_matrix[
+                bidder, desired_good] == 0:  # re-assignment for higher bid
+                # put previous bidder in end of queue, and set new bidder as the owner
+                previous_owner = association_matrix[:, desired_good].argmax()
+                bidders_queue.append(previous_owner)
+                association_matrix[previous_owner, desired_good] = 0
+                association_matrix[bidder, desired_good] = 1
+                best_prices[desired_good] += epsilon_price
+            print(association_matrix)
+
+        total_price = 0
+        print('\nfinal results:')
+        print(f'association_matrix=\n{association_matrix}')
+        for item in range(num_goods):
+            if association_matrix[:, item].sum() > 0:
+                owner = association_matrix[:, item].argmax()
+                total_price += cost_matrix[owner, item]
+                print(f'{item=}: {owner=}')
+            else:
+                print(f'{item=}: no owner')
+        for owner in range(num_bidders):
+            if association_matrix[owner, :].sum() == 0:
+                print(f'no item for {owner=}')
+
+        print(f'{iterations=}')
+        print(f'{total_price=}')
 
     def tracking_iteration(self, detections):
         # Track objects detected in the new frame probabilities
@@ -123,15 +168,15 @@ class Tracker:
             return None
 
         # if there are tracks, create the probability matrix for them
-        cost_matrix = self.calculate_measurement_likelihoods(detections)
-        association_matrix = self.associate_tracks(cost_matrix)
+        likelihood_matrix, track_idx_to_id = self.calculate_measurement_likelihoods(detections)
+        association_matrix = self.associate_tracks(likelihood_matrix)
 
         for detection_idx in range(len(detections)):
             if association_matrix[:, detection_idx].sum() > 0:
                 # Associate the prediction with the corresponding valid detection
                 association_idx = association_matrix[:, detection_idx].argmax()
-                track_idx = association_idx  # TODO: relate the row idx in the matrix to idx of existing tracks
-                self.associate(self.tracks[track_idx], frame_timestamp, detections[detection_idx])
+                track_id = track_idx_to_id[association_idx]
+                self.associate(self.tracks[track_id], frame_timestamp, detections[detection_idx])
             else:
                 # If no track could be related to this new detection,create it as a new track
                 self.create_new_track(detections[detection_idx])

@@ -25,7 +25,6 @@ print(f'\ncost_matrix: \n{cost_matrix}\n')
 num_bidders = cost_matrix.shape[0]
 num_goods = cost_matrix.shape[1]
 
-owners_allocated_to_goods = dict.fromkeys(range(num_goods))
 association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
 best_prices = [0] * num_goods
 bidders_queue = list(range(num_bidders))

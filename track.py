@@ -10,12 +10,12 @@ class Tracker:
         self.tracks = {}
         self.vacant_id = 0
         self.mileage = 0
-        self.min_y_position = -300
-        self.max_y_position = 300
+        self.min_y_position = -400
+        self.max_y_position = 400
         self.location_scale = 1000
         self.tomato_number_scale = 30
         self.association_threshold = 0.6
-        self.track_timeout = 15  # [sec]
+        self.track_timeout_sec = 60  # [sec]
         self.tracks_to_remove = set()  # using a set to avoid duplicates of removal requests
 
     def create_new_track(self, new_track):
@@ -36,17 +36,20 @@ class Tracker:
         diff_mileage = new_mileage - self.mileage
         for track_id, track in self.tracks.items():
             if (self.min_y_position < track['params']['position'][1] + diff_mileage < self.max_y_position and
-                    new_timestamp - track['last_seen'] < self.track_timeout):
+                    new_timestamp - track['last_seen'] < self.track_timeout_sec * 10e-9):
                 track['params']['position'][1] += diff_mileage
             else:
                 # outside relevant visible window, or too old
+                print(f'{track_id} is set to be removed')
                 self.tracks_to_remove.add(track_id)
 
         self.mileage = new_mileage  # update the mileage
 
     def clean_old_tracks(self):
-        for track_id in self.tracks_to_remove:
+        while len(self.tracks_to_remove) > 0:
+            track_id = self.tracks_to_remove.pop()
             self.tracks.pop(track_id)
+            print(f'{track_id} is removed')
 
     def normalize_3d_location(self, location):
         return location / self.location_scale
@@ -96,50 +99,49 @@ class Tracker:
 
         return _likelihood_matrix, _track_idx_to_id
 
-    def associate_tracks(self, _likelihood_matrix):
-        print(f'\ncost_matrix: \n{cost_matrix}\n')
+    @staticmethod
+    def associate_tracks(_likelihood_matrix):
+        # the bidders(tracks) try tp the get the goods(detection) they value the most
+        print(f'\nlikelihood_matrix: \n{_likelihood_matrix}\n')
 
         # rows = bidders (or owners), columns = goods
-        num_bidders = cost_matrix.shape[0]
-        num_goods = cost_matrix.shape[1]
+        num_bidders = _likelihood_matrix.shape[0]
+        num_goods = _likelihood_matrix.shape[1]
 
-        owners_allocated_to_goods = dict.fromkeys(range(num_goods))
         association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
         best_prices = [0] * num_goods
         bidders_queue = list(range(num_bidders))
-        # epsilon_price = round(np.log10(np.mean(cost_matrix)))
-        # epsilon_price = 1 / num_bidders + 1
-        # epsilon_price = 0.1
-        epsilon_price = np.mean(np.sort(cost_matrix, axis=None)) / 10
+        epsilon_price = np.mean(np.sort(_likelihood_matrix, axis=None)) / 10
 
-        print('start bidding...')
-        iterations = 0
+        # print('start bidding...')
+        num_iterations = 0
         while len(bidders_queue) > 0:
-            iterations += 1
-            bidder = bidders_queue.pop(0)  # take the first bidder in line
-            print(f'{bidder=}')
-            desired_good = np.argmax(benefits := (cost_matrix[bidder, :] - best_prices))
+            num_iterations += 1
+            bidder = bidders_queue.pop(0)  # take the first bidder in queue
+            # print(f'{bidder=}')
+            desired_good = np.argmax(benefits := (_likelihood_matrix[bidder, :] - best_prices))
             price_rise = benefits[desired_good]
             if not association_matrix[:, desired_good].any():
-                association_matrix[bidder, desired_good] = 1  # first time assignment of a good
+                # first time assignment of a good
+                association_matrix[bidder, desired_good] = 1
                 best_prices[desired_good] += epsilon_price
-            if price_rise > epsilon_price and association_matrix[
-                bidder, desired_good] == 0:  # re-assignment for higher bid
+            if price_rise > epsilon_price and association_matrix[bidder, desired_good] == 0:
+                # re-assignment for higher bid
                 # put previous bidder in end of queue, and set new bidder as the owner
                 previous_owner = association_matrix[:, desired_good].argmax()
                 bidders_queue.append(previous_owner)
                 association_matrix[previous_owner, desired_good] = 0
                 association_matrix[bidder, desired_good] = 1
                 best_prices[desired_good] += epsilon_price
-            print(association_matrix)
+            # print(association_matrix)
 
-        total_price = 0
-        print('\nfinal results:')
+        # print('\nfinal results:')
         print(f'association_matrix=\n{association_matrix}')
+        total_profit = 0
         for item in range(num_goods):
             if association_matrix[:, item].sum() > 0:
                 owner = association_matrix[:, item].argmax()
-                total_price += cost_matrix[owner, item]
+                total_profit += _likelihood_matrix[owner, item]
                 print(f'{item=}: {owner=}')
             else:
                 print(f'{item=}: no owner')
@@ -147,8 +149,10 @@ class Tracker:
             if association_matrix[owner, :].sum() == 0:
                 print(f'no item for {owner=}')
 
-        print(f'{iterations=}')
-        print(f'{total_price=}')
+        print(f'{num_iterations=}')
+        print(f'{total_profit=}')
+
+        return association_matrix
 
     def tracking_iteration(self, detections):
         # Track objects detected in the new frame probabilities
@@ -156,8 +160,9 @@ class Tracker:
         # we take the timestamp from one of the detections, but we need to handle a case where there are no detections
         # so just save the frame's timestamp in the pickle
         frame_timestamp = detections[0]['timestamp']
-        self.clean_old_tracks()
+        print(f'\n{frame_timestamp=}')
         self.update_predictions(0, frame_timestamp)
+        self.clean_old_tracks()
 
         if len(detections) == 0:  # if there are no detections
             return None
@@ -176,10 +181,18 @@ class Tracker:
                 # Associate the prediction with the corresponding valid detection
                 association_idx = association_matrix[:, detection_idx].argmax()
                 track_id = track_idx_to_id[association_idx]
-                self.associate(self.tracks[track_id], frame_timestamp, detections[detection_idx])
+                self.associate(track_id, frame_timestamp, detections[detection_idx])
             else:
                 # If no track could be related to this new detection,create it as a new track
                 self.create_new_track(detections[detection_idx])
+
+        # (no need for a special action for tracks that had no detections, they'll be handled in update_predictions)
+        print(f'current track ids: {list(self.tracks.keys())}')
+        self.log_tracks()
+
+    def log_tracks(self):
+        # save the current active tracks to a database
+        pass
 
 
 def load_pickle_file(filename):
@@ -207,7 +220,7 @@ ax = fig.add_subplot(projection='3d')
 colors = ['r', 'b', 'm', 'c']
 frames.sort(key=lambda d: d[0]['timestamp'])
 for frame, color in zip(frames, colors):
-    print(len(frame))
+    # TODO: use the logged tracks
     for cluster in frame:
         position = cluster['position']
         ax.scatter(position[0], position[1], position[2], c=color)

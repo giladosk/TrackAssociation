@@ -51,11 +51,11 @@ class Tracker:
             self.tracks.pop(track_id)
             print(f'{track_id} is removed')
 
-    def normalize_3d_location(self, location):
-        return location / self.location_scale
+    def calc_location_distance(self, location_detection, location_prediction):
+        return np.linalg.norm(location_detection - location_prediction) / self.location_scale
 
-    def normalize_sub_object_count(self, tomato_count):
-        return tomato_count / self.tomato_number_scale
+    def calc_tomato_count_distance(self, tomato_count_detection, tomato_count_prediction):
+        return abs(tomato_count_detection - tomato_count_prediction) / self.tomato_number_scale
 
     def calculate_measurement_likelihoods(self, detected_features):
         """
@@ -79,23 +79,19 @@ class Tracker:
         for i, (track_id, track_data) in enumerate(self.tracks.items()):
             _track_idx_to_id.append(track_id)  # saves idx-id relation
             for j in range(num_detected_objects):
-                predicted_location = self.normalize_3d_location(track_data['params']['position'])
-                detected_location = self.normalize_3d_location(detected_features[j]['position'])
-                location_distance = np.linalg.norm(predicted_location - detected_location)
+                location_distance = self.calc_location_distance(detected_features[j]['position'], track_data['params']['position'])
+                tomato_count_distance = self.calc_tomato_count_distance(detected_features[j]['tomatoes'], track_data['params']['tomatoes'])
 
-                predicted_score = track_data['params']['confidence']
-                detected_score = detected_features[j]['confidence']
-                score_distance = abs(predicted_score - detected_score)
-
-                predicted_sub_object_count = self.normalize_sub_object_count(track_data['params']['tomatoes'])
-                detected_sub_object_count = self.normalize_sub_object_count(detected_features[j]['tomatoes'])
-                sub_object_count_distance = abs(predicted_sub_object_count - detected_sub_object_count)
-
-                # Combine distances using a weighted sum or other strategy
-                total_distance = 0.8 * location_distance + 0.1 * score_distance + 0.1 * sub_object_count_distance
+                # Combine distances using a weighted sum
+                total_distance = 0.8 * location_distance + 0.2 * tomato_count_distance
 
                 # Using a Gaussian function to convert distance to likelihood (bigger value = more likely)
-                _likelihood_matrix[i][j] = np.exp(-0.5 * (total_distance ** 2))
+                if total_distance < self.association_threshold:
+                    # when it is a plausible association
+                    _likelihood_matrix[i][j] = np.exp(-0.5 * (total_distance ** 2))
+                else:
+                    # when there association is so unlikely we want to forbid it, its profit is negative
+                    _likelihood_matrix[i][j] = -1000
 
         return _likelihood_matrix, _track_idx_to_id
 

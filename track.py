@@ -2,6 +2,7 @@ import numpy as np
 from pathlib import Path
 import pickle
 import matplotlib.pyplot as plt
+np.set_printoptions(suppress=True)
 
 
 class Tracker:
@@ -12,9 +13,9 @@ class Tracker:
         self.mileage = 0
         self.min_y_position = -400
         self.max_y_position = 400
-        self.location_scale = 1000
-        self.tomato_number_scale = 30
-        self.association_threshold = 0.6
+        self.location_scale = 100  # normalize to be equivalent to decimeters
+        self.tomato_number_scale = 10
+        self.association_threshold = 3  # how far in decimeters-equivalent do we think a cluster can be
         self.track_timeout_sec = 60  # [sec]
         self.tracks_to_remove = set()  # using a set to avoid duplicates of removal requests
 
@@ -22,6 +23,7 @@ class Tracker:
         # get the largest track id, and create a new track with all the relevant parameters
         self.tracks[self.vacant_id] = {'last_seen': new_track['timestamp'], 'visible': True,
                                        'params': {k: new_track[k] for k in ('position', 'tomatoes', 'confidence')}}
+        print(f'creating track #{self.vacant_id}')
         self.vacant_id += 1
 
     def associate(self, existing_track_id, new_timestamp, new_track_data):
@@ -36,7 +38,7 @@ class Tracker:
         diff_mileage = new_mileage - self.mileage
         for track_id, track in self.tracks.items():
             if (self.min_y_position < track['params']['position'][1] + diff_mileage < self.max_y_position and
-                    new_timestamp - track['last_seen'] < self.track_timeout_sec * 10e-9):
+                    new_timestamp - track['last_seen'] < self.track_timeout_sec * 1e9):
                 track['params']['position'][1] += diff_mileage
             else:
                 # outside relevant visible window, or too old
@@ -49,7 +51,7 @@ class Tracker:
         while len(self.tracks_to_remove) > 0:
             track_id = self.tracks_to_remove.pop()
             self.tracks.pop(track_id)
-            print(f'{track_id} is removed')
+            print(f'removing track #{track_id}')
 
     def calc_location_distance(self, location_detection, location_prediction):
         return np.linalg.norm(location_detection - location_prediction) / self.location_scale
@@ -88,10 +90,10 @@ class Tracker:
                 # Using a Gaussian function to convert distance to likelihood (bigger value = more likely)
                 if total_distance < self.association_threshold:
                     # when it is a plausible association
-                    _likelihood_matrix[i][j] = np.exp(-0.5 * (total_distance ** 2))
+                    _likelihood_matrix[i][j] = np.exp(-total_distance)
                 else:
-                    # when there association is so unlikely we want to forbid it, its profit is negative
-                    _likelihood_matrix[i][j] = -1000
+                    # when the association is so much unlikely we want to forbid it, its profit is negative
+                    _likelihood_matrix[i][j] = -1
 
         return _likelihood_matrix, _track_idx_to_id
 
@@ -107,14 +109,12 @@ class Tracker:
         association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
         best_prices = [0] * num_goods
         bidders_queue = list(range(num_bidders))
-        epsilon_price = np.mean(np.sort(_likelihood_matrix, axis=None)) / 10
+        epsilon_price = np.mean(abs(np.sort(_likelihood_matrix, axis=None))) / 10  # bid step ~(10th * data resolution)
 
-        # print('start bidding...')
         num_iterations = 0
         while len(bidders_queue) > 0:
             num_iterations += 1
             bidder = bidders_queue.pop(0)  # take the first bidder in queue
-            # print(f'{bidder=}')
             desired_good = np.argmax(benefits := (_likelihood_matrix[bidder, :] - best_prices))
             price_rise = benefits[desired_good]
             if not association_matrix[:, desired_good].any():
@@ -129,9 +129,7 @@ class Tracker:
                 association_matrix[previous_owner, desired_good] = 0
                 association_matrix[bidder, desired_good] = 1
                 best_prices[desired_good] += epsilon_price
-            # print(association_matrix)
 
-        # print('\nfinal results:')
         print(f'association_matrix=\n{association_matrix}')
         total_profit = 0
         for item in range(num_goods):
@@ -164,6 +162,7 @@ class Tracker:
             return None
 
         if len(self.tracks) == 0:  # for a case where there are no existing tracks
+            print('no existing track, initializing new tracks')
             for i in range(len(detections)):
                 self.create_new_track(detections[i])
             return None

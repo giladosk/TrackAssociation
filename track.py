@@ -103,7 +103,7 @@ class Tracker:
     @staticmethod
     def associate_tracks(_likelihood_matrix):
         # the bidders(tracks) try tp the get the goods(detection) they value the most
-        print(f'\nlikelihood_matrix: \n{_likelihood_matrix}')
+        print(f'\nlikelihood_matrix=\n{_likelihood_matrix}')
 
         # rows = bidders (or owners), columns = goods
         num_bidders = _likelihood_matrix.shape[0]
@@ -220,15 +220,20 @@ ax = fig.add_subplot(projection='3d')
 
 colors = ['r', 'b', 'm', 'c']
 frames.sort(key=lambda d: d[0]['timestamp'])
-for frame, color in zip(frames, colors):
+for frame, color in zip(tracker.track_log, colors):
     # TODO: use the logged tracks
-    for cluster in frame:
-        position = cluster['position']
-        ax.scatter(position[0], position[1], position[2], c=color)
+    for track_id, cluster in frame.items():
+        position = cluster['params']['position']
+        track_text = f'{track_id}'
+        # ax.scatter(position[0], position[1], position[2], c=color)
+        ax.text(position[0], position[1], position[2], track_text, size=10, color=color)
 
 ax.set_xlabel('x')
 ax.set_ylabel('y')
 ax.set_zlabel('z')
+ax.set_xlim(490, 600)
+ax.set_ylim(-400, 100)
+ax.set_zlim(200, 800)
 plt.show()
 
 last_line = 0

@@ -26,6 +26,7 @@ class Tracker:
         # get the largest track id, and create a new track with all the relevant parameters
         self.tracks[self.vacant_id] = {'last_seen': new_track['timestamp'], 'visible': True,
                                        'params': {k: new_track[k] for k in ('position', 'tomatoes', 'confidence')}}
+        self.tracks[self.vacant_id]['params']['position'][1] += self.mileage  # add mileage driven so far
         print(f'creating track #{self.vacant_id}')
         self.vacant_id += 1
 
@@ -42,7 +43,7 @@ class Tracker:
         for track_id, track in self.tracks.items():
             if (self.min_y_position < track['params']['position'][1] + diff_mileage < self.max_y_position and
                     new_timestamp - track['last_seen'] < self.track_timeout_sec * 1e9):
-                track['params']['position'][1] += diff_mileage
+                track['params']['position'][1] -= diff_mileage  # subtract the extra mileage driven
             else:
                 # outside relevant visible window, or too old
                 print(f'{track_id} is set to be removed')
@@ -221,7 +222,6 @@ ax = fig.add_subplot(projection='3d')
 colors = ['r', 'b', 'm', 'c']
 frames.sort(key=lambda d: d[0]['timestamp'])
 for frame, color in zip(tracker.track_log, colors):
-    # TODO: use the logged tracks
     for track_id, cluster in frame.items():
         position = cluster['params']['position']
         track_text = f'{track_id}'

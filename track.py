@@ -2,6 +2,8 @@ import numpy as np
 from pathlib import Path
 import pickle
 import matplotlib.pyplot as plt
+from copy import deepcopy
+
 np.set_printoptions(suppress=True)
 
 
@@ -9,6 +11,7 @@ class Tracker:
     # Tracking using Global Nearest Neighbor
     def __init__(self):
         self.tracks = {}
+        self.track_log = []
         self.vacant_id = 0
         self.mileage = 0
         self.min_y_position = -400
@@ -100,7 +103,7 @@ class Tracker:
     @staticmethod
     def associate_tracks(_likelihood_matrix):
         # the bidders(tracks) try tp the get the goods(detection) they value the most
-        print(f'\nlikelihood_matrix: \n{_likelihood_matrix}\n')
+        print(f'\nlikelihood_matrix: \n{_likelihood_matrix}')
 
         # rows = bidders (or owners), columns = goods
         num_bidders = _likelihood_matrix.shape[0]
@@ -117,11 +120,14 @@ class Tracker:
             bidder = bidders_queue.pop(0)  # take the first bidder in queue
             desired_good = np.argmax(benefits := (_likelihood_matrix[bidder, :] - best_prices))
             price_rise = benefits[desired_good]
+            if price_rise < epsilon_price:
+                # when this bidder has no way to compete on any of the goods
+                continue
             if not association_matrix[:, desired_good].any():
                 # first time assignment of a good
                 association_matrix[bidder, desired_good] = 1
                 best_prices[desired_good] += epsilon_price
-            if price_rise > epsilon_price and association_matrix[bidder, desired_good] == 0:
+            elif association_matrix[bidder, desired_good] == 0:
                 # re-assignment for higher bid
                 # put previous bidder in end of queue, and set new bidder as the owner
                 previous_owner = association_matrix[:, desired_good].argmax()
@@ -183,11 +189,10 @@ class Tracker:
 
         # (no need for a special action for tracks that had no detections, they'll be handled in update_predictions)
         print(f'current track ids: {list(self.tracks.keys())}')
-        self.log_tracks()
 
-    def log_tracks(self):
+    def log_detections_and_tracks(self):
         # save the current active tracks to a database
-        pass
+        self.track_log.append(deepcopy(self.tracks))
 
 
 def load_pickle_file(filename):
@@ -207,6 +212,7 @@ for file in file_list:
     if file.suffix == '.pkl':
         frame_detections = load_pickle_file(file)
         tracker.tracking_iteration(frame_detections)
+        tracker.log_detections_and_tracks()
         frames.append(frame_detections)
 
 fig = plt.figure()

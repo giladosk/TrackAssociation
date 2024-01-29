@@ -1,14 +1,13 @@
 import numpy as np
 
-cost_matrix_minimise = np.array([[108, 125, 150],
-                                 [150, 135, 175],
-                                 [122, 148, 250]])  # we know the min assignments are: (0, 2), (1, 1), (2, 0)
-#
+# cost_matrix_minimise = np.array([[108, 125, 150],
+#                                  [150, 135, 175],
+#                                  [122, 148, 250]])  # we know the min assignments are: (0, 2), (1, 1), (2, 0)
 # cost_matrix_minimise = np.array([[9, 2, 7, 8],
 #                                  [6, 4, 3, 7],
 #                                  [5, 8, 1, 8],
 #                                  [7, 6, 9, 4]])  # we know the min assignments are:...
-cost_matrix = np.amax(cost_matrix_minimise) - cost_matrix_minimise
+# cost_matrix = np.amax(cost_matrix_minimise) - cost_matrix_minimise
 # cost_matrix = np.array([[2, 4, 3, 5, 4],
 #                         [7, 4, 6, 8, 4],
 #                         [2, 9, 8, 10, 4],
@@ -18,7 +17,11 @@ cost_matrix = np.amax(cost_matrix_minimise) - cost_matrix_minimise
 #                         [6, 1, 1, 10]])  # less tracks than new items in new frame
 # cost_matrix = np.array([[4, 3],
 #                         [6, 1],
-#                         [0, 9]])
+#                         [0, 9]])  # more tracks than items
+cost_matrix = np.array([[9, 2, 20, 8],
+                        [-1, -1, 3, -1],
+                        [5, 8, 1, 8],
+                        [7, 6, -1, 4]])  # some tracks-detection combination are highly unlikely
 print(f'\ncost_matrix: \n{cost_matrix}\n')
 
 # rows = bidders (or owners), columns = goods
@@ -41,10 +44,13 @@ while len(bidders_queue) > 0:
     print(f'{bidder=}')
     desired_good = np.argmax(benefits := (cost_matrix[bidder, :] - best_prices))
     price_rise = benefits[desired_good]
+    if price_rise < epsilon_price:
+        # when this bidder has no way to compete on any of the goods
+        continue
     if not association_matrix[:, desired_good].any():
-        association_matrix[bidder, desired_good] = 1  # first time assignment of a good
+        association_matrix[bidder, desired_good] = 1  # first time assignment of this good
         best_prices[desired_good] += epsilon_price
-    if price_rise > epsilon_price and association_matrix[bidder, desired_good] == 0:  # re-assignment for higher bid
+    elif association_matrix[bidder, desired_good] == 0:  # re-assignment for higher bid
         # put previous bidder in end of queue, and set new bidder as the owner
         previous_owner = association_matrix[:, desired_good].argmax()
         bidders_queue.append(previous_owner)

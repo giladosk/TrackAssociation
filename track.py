@@ -57,8 +57,12 @@ class Tracker:
             self.tracks.pop(track_id)
             print(f'removing track #{track_id}')
 
-    def calc_location_distance(self, location_detection, location_prediction):
-        return np.linalg.norm(location_detection - location_prediction) / self.location_scale
+    def calc_location_distances(self, detected_features):
+        track_locations = np.stack([data['params']['position'] for data in self.tracks.values()])
+        detection_locations = np.stack([data['position'] for data in detected_features])
+        _likelihood_matrix = np.sqrt(np.sum((track_locations[:, np.newaxis, :] -
+                                             detection_locations[np.newaxis, :, :]) ** 2, axis=-1))
+        return _likelihood_matrix
 
     def calc_tomato_count_distance(self, tomato_count_detection, tomato_count_prediction):
         return abs(tomato_count_detection - tomato_count_prediction) / self.tomato_number_scale
@@ -81,11 +85,14 @@ class Tracker:
         _likelihood_matrix = np.zeros((num_predicted_objects, num_detected_objects))
         _track_idx_to_id = []  # holds the relation between track_id to the positional idx in the matrix
 
+        # pre-calculate euclidean distances:
+        euclidean_distances = self.calc_location_distances(detected_features)
+
         # Calculate likelihoods based on Euclidean distance and other metrics
-        for i, (track_id, track_data) in enumerate(self.tracks.items()):
-            _track_idx_to_id.append(track_id)  # saves idx-id relation
+        for i, (_track_id, track_data) in enumerate(self.tracks.items()):
+            _track_idx_to_id.append(_track_id)  # saves idx-id relation
             for j in range(num_detected_objects):
-                location_distance = self.calc_location_distance(detected_features[j]['position'], track_data['params']['position'])
+                location_distance = euclidean_distances[i, j] / self.location_scale
                 tomato_count_distance = self.calc_tomato_count_distance(detected_features[j]['tomatoes'], track_data['params']['tomatoes'])
 
                 # Combine distances using a weighted sum

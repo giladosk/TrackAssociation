@@ -221,19 +221,26 @@ ax = fig.add_subplot(projection='3d')
 
 colors = ['r', 'b', 'm', 'c']
 frames.sort(key=lambda d: d[0]['timestamp'])
+fig_limits = {'xmin': 1000, 'xmax': -1000, 'ymin': 1000, 'ymax': -1000, 'zmin': 1000, 'zmax': -1000}
 for frame, color in zip(tracker.track_log, colors):
     for track_id, cluster in frame.items():
         position = cluster['params']['position']
         track_text = f'{track_id}'
         # ax.scatter(position[0], position[1], position[2], c=color)
         ax.text(position[0], position[1], position[2], track_text, size=10, color=color)
+        fig_limits['xmin'] = min(fig_limits['xmin'], position[0])
+        fig_limits['ymin'] = min(fig_limits['ymin'], position[1])
+        fig_limits['zmin'] = min(fig_limits['zmin'], position[2])
+        fig_limits['xmax'] = max(fig_limits['xmax'], position[0])
+        fig_limits['ymax'] = max(fig_limits['ymax'], position[1])
+        fig_limits['zmax'] = max(fig_limits['zmax'], position[2])
 
 ax.set_xlabel('x')
 ax.set_ylabel('y')
 ax.set_zlabel('z')
-ax.set_xlim(490, 600)
-ax.set_ylim(-400, 100)
-ax.set_zlim(200, 800)
+ax.set_xlim(fig_limits['xmin'] - 50, fig_limits['xmax'] + 50)
+ax.set_ylim(fig_limits['ymin'] - 50, fig_limits['ymax'] + 50)
+ax.set_zlim(fig_limits['zmin'] - 50, fig_limits['zmax'] + 50)
 plt.show()
 
 last_line = 0

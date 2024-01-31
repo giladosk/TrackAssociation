@@ -24,7 +24,7 @@ class Tracker:
 
     def create_new_track(self, new_track):
         # get the largest track id, and create a new track with all the relevant parameters
-        self.tracks[self.vacant_id] = {'last_seen': new_track['timestamp'], 'visible': True,
+        self.tracks[self.vacant_id] = {'first_seen': new_track['timestamp'], 'last_seen': new_track['timestamp'], 'visible': True,
                                        'params': {k: new_track[k] for k in ('position', 'tomatoes', 'confidence')}}
         self.tracks[self.vacant_id]['params']['position'][1] += self.mileage  # add mileage driven so far
         print(f'creating track #{self.vacant_id}')
@@ -53,26 +53,24 @@ class Tracker:
 
     def clean_old_tracks(self):
         while len(self.tracks_to_remove) > 0:
-            track_id = self.tracks_to_remove.pop()
-            self.tracks.pop(track_id)
-            print(f'removing track #{track_id}')
+            _track_id = self.tracks_to_remove.pop()
+            self.tracks.pop(_track_id)
+            print(f'removing track #{_track_id}')
 
     def calc_location_distances(self, detected_features):
         track_locations = np.stack([data['params']['position'] for data in self.tracks.values()])
         detection_locations = np.stack([data['position'] for data in detected_features])
-        _likelihood_matrix = np.sqrt(np.sum((track_locations[:, np.newaxis, :] -
+        euclidean_distances = np.sqrt(np.sum((track_locations[:, np.newaxis, :] -
                                              detection_locations[np.newaxis, :, :]) ** 2, axis=-1))
-        return _likelihood_matrix
+        return euclidean_distances
 
     def calc_tomato_count_distance(self, tomato_count_detection, tomato_count_prediction):
         return abs(tomato_count_detection - tomato_count_prediction) / self.tomato_number_scale
 
     def calculate_measurement_likelihoods(self, detected_features):
         """
-        Example usage:
-        Assuming predicted_features and detected_features are lists of feature vectors
-        where each feature vector may contain 3D location (x, y, z), score, and number of sub-objects.
-        probability_matrix = calculate_measurement_likelihoods(predicted_features, detected_features)
+        Create a likelihood matrix that relates the detected clusters to existing tracks, and gives a grade for each of
+        the combinations. The higher the grade, the more likely the specific combination is likely
         """
 
         num_predicted_objects = len(self.tracks)
@@ -110,7 +108,7 @@ class Tracker:
 
     @staticmethod
     def associate_tracks(_likelihood_matrix):
-        # the bidders(tracks) try tp the get the goods(detection) they value the most
+        # the bidders(tracks) try tp the get the goods(detections) they value the most
         print(f'\nlikelihood_matrix=\n{_likelihood_matrix}')
 
         # rows = bidders (or owners), columns = goods
@@ -163,7 +161,7 @@ class Tracker:
         return association_matrix
 
     def tracking_iteration(self, detections):
-        # Track objects detected in the new frame probabilities
+        # Track objects detected in the new frame
 
         # we take the timestamp from one of the detections, but we need to handle a case where there are no detections
         # so just save the frame's timestamp in the pickle
@@ -209,7 +207,7 @@ def load_pickle_file(filename):
     return file_content
 
 
-tracker = Tracker()
+# load saved detections
 folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
 folder_path = Path(folder_name)
 
@@ -219,15 +217,20 @@ frames = []
 for file in file_list:
     if file.suffix == '.pkl':
         frame_detections = load_pickle_file(file)
-        tracker.tracking_iteration(frame_detections)
-        tracker.log_detections_and_tracks()
         frames.append(frame_detections)
+frames.sort(key=lambda d: d[0]['timestamp'])
 
+# perform tracking
+tracker = Tracker()
+for frame in frames:
+    tracker.tracking_iteration(frame)
+    tracker.log_detections_and_tracks()
+
+# plot results
 fig = plt.figure()
 ax = fig.add_subplot(projection='3d')
 
-colors = ['r', 'b', 'm', 'c']
-frames.sort(key=lambda d: d[0]['timestamp'])
+colors = ['r', 'b', 'm', 'c', 'g']
 fig_limits = {'xmin': 1000, 'xmax': -1000, 'ymin': 1000, 'ymax': -1000, 'zmin': 1000, 'zmax': -1000}
 for frame, color in zip(tracker.track_log, colors):
     for track_id, cluster in frame.items():
@@ -235,12 +238,9 @@ for frame, color in zip(tracker.track_log, colors):
         track_text = f'{track_id}'
         # ax.scatter(position[0], position[1], position[2], c=color)
         ax.text(position[0], position[1], position[2], track_text, size=10, color=color)
-        fig_limits['xmin'] = min(fig_limits['xmin'], position[0])
-        fig_limits['ymin'] = min(fig_limits['ymin'], position[1])
-        fig_limits['zmin'] = min(fig_limits['zmin'], position[2])
-        fig_limits['xmax'] = max(fig_limits['xmax'], position[0])
-        fig_limits['ymax'] = max(fig_limits['ymax'], position[1])
-        fig_limits['zmax'] = max(fig_limits['zmax'], position[2])
+        fig_limits['xmin'], fig_limits['xmax'] = min(fig_limits['xmin'], position[0]), max(fig_limits['xmax'], position[0])
+        fig_limits['ymin'], fig_limits['ymax'] = min(fig_limits['ymin'], position[1]), max(fig_limits['ymax'], position[1])
+        fig_limits['zmin'], fig_limits['zmax'] = min(fig_limits['zmin'], position[2]), max(fig_limits['zmax'], position[2])
 
 ax.set_xlabel('x')
 ax.set_ylabel('y')

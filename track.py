@@ -85,6 +85,7 @@ class Tracker:
 
         # pre-calculate euclidean distances:
         euclidean_distances = self.calc_location_distances(detected_features)
+        # todo: also check vs python double-for loop on jetson
 
         # Calculate likelihoods based on Euclidean distance and other metrics
         for i, (_track_id, track_data) in enumerate(self.tracks.items()):

@@ -3,6 +3,7 @@ from pathlib import Path
 import pickle
 import matplotlib.pyplot as plt
 from copy import deepcopy
+import csv
 
 np.set_printoptions(suppress=True)
 
@@ -201,6 +202,15 @@ class Tracker:
         # save the current active tracks to a database
         self.track_log.append(deepcopy(self.tracks))
 
+    def save_log_to_csv(self):
+        with open('tracks.csv', 'w') as f:
+            writer = csv.writer(f)
+            for epoch in self.track_log:
+                for track_id, track in epoch.items():
+                    if track['visible']:
+                        writer.writerow([track['last_seen'], track_id,
+                                         track['params']['position'][0], track['params']['position'][1], track['params']['position'][2]])
+
 
 def load_pickle_file(filename):
     with open(filename, 'rb') as _file:
@@ -226,6 +236,8 @@ tracker = Tracker()
 for frame in frames:
     tracker.tracking_iteration(frame)
     tracker.log_detections_and_tracks()
+
+tracker.save_log_to_csv()
 
 # plot results
 fig = plt.figure()

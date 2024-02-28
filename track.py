@@ -9,7 +9,7 @@ np.set_printoptions(suppress=True)
 
 
 class Tracker:
-    # Tracking using Global Nearest Neighbor
+    # Tracking using Auction Algorithm
     def __init__(self):
         self.tracks = {}
         self.track_log = []

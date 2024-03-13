@@ -5,6 +5,7 @@ matplotlib.use('TkAgg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+
 def read_data(file_path):
     data = {}
     with open(file_path, 'r') as file:
@@ -23,6 +24,7 @@ def read_data(file_path):
                 data[owner][timestamp] = []
             data[owner][timestamp].append((id_num, location, visibility))
     return data
+
 
 def plot_data(data, timestamp, owner):
     ax.clear()
@@ -58,6 +60,39 @@ def plot_data(data, timestamp, owner):
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     canvas.draw()
+
+
+def update_timestamps(owner):
+    global selected_owner, selected_timestamp_index
+    selected_owner = owner
+    timestamps_for_owner = timestamps[owner]
+    if timestamps_for_owner:
+        selected_timestamp_index = 0
+        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
+        plot_data(data, timestamps_for_owner[selected_timestamp_index], owner)
+    else:
+        selected_timestamp_index = -1
+        timestamp_var.set('')
+        plot_data(data, '', owner)
+
+
+def prev_timestamp():
+    global selected_timestamp_index
+    timestamps_for_owner = timestamps[selected_owner]
+    if timestamps_for_owner:
+        selected_timestamp_index = (selected_timestamp_index - 1) % len(timestamps_for_owner)
+        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
+        plot_data(data, timestamps_for_owner[selected_timestamp_index], selected_owner)
+
+
+def next_timestamp():
+    global selected_timestamp_index
+    timestamps_for_owner = timestamps[selected_owner]
+    if timestamps_for_owner:
+        selected_timestamp_index = (selected_timestamp_index + 1) % len(timestamps_for_owner)
+        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
+        plot_data(data, timestamps_for_owner[selected_timestamp_index], selected_owner)
+
 
 # Create the main window
 root = tk.Tk()
@@ -101,35 +136,6 @@ timestamp_label.pack(side=tk.TOP)
 
 selected_owner = owners[0]
 selected_timestamp_index = 0
-
-def update_timestamps(owner):
-    global selected_owner, selected_timestamp_index
-    selected_owner = owner
-    timestamps_for_owner = timestamps[owner]
-    if timestamps_for_owner:
-        selected_timestamp_index = 0
-        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
-        plot_data(data, timestamps_for_owner[selected_timestamp_index], owner)
-    else:
-        selected_timestamp_index = -1
-        timestamp_var.set('')
-        plot_data(data, '', owner)
-
-def prev_timestamp():
-    global selected_timestamp_index
-    timestamps_for_owner = timestamps[selected_owner]
-    if timestamps_for_owner:
-        selected_timestamp_index = (selected_timestamp_index - 1) % len(timestamps_for_owner)
-        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
-        plot_data(data, timestamps_for_owner[selected_timestamp_index], selected_owner)
-
-def next_timestamp():
-    global selected_timestamp_index
-    timestamps_for_owner = timestamps[selected_owner]
-    if timestamps_for_owner:
-        selected_timestamp_index = (selected_timestamp_index + 1) % len(timestamps_for_owner)
-        timestamp_var.set(timestamps_for_owner[selected_timestamp_index])
-        plot_data(data, timestamps_for_owner[selected_timestamp_index], selected_owner)
 
 prev_button = tk.Button(timestamp_frame, text="<", command=prev_timestamp)
 prev_button.pack(side=tk.LEFT)

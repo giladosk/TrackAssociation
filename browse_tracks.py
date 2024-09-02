@@ -9,6 +9,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 def read_data(file_path):
     data = {}
     with open(file_path, 'r') as file:
+        next(file)  # skip header
         for line in file:
             parts = line.strip().split(', ')
             hour = parts[0]
@@ -26,12 +27,12 @@ def read_data(file_path):
     return data
 
 
-def plot_data(data, timestamp, owner):
+def plot_data(_data, timestamp, owner):
     ax.clear()
-    if owner in data and timestamp in data[owner]:
+    if owner in _data and timestamp in _data[owner]:
         all_visible_data = []
         all_invisible_data = []
-        for id_num, location, visible in data[owner][timestamp]:
+        for id_num, location, visible in _data[owner][timestamp]:
             if visible:
                 all_visible_data.append((location, id_num))
             else:
@@ -56,6 +57,9 @@ def plot_data(data, timestamp, owner):
         for x, y, z, id_num in zip(invisible_x, invisible_y, invisible_z, invisible_ids):
             ax.text(x, y, z, id_num, color='gray')
 
+    ax.set_xlim(200, 1000)
+    ax.set_ylim(-400, 600)
+    ax.set_zlim(0, 1200)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')

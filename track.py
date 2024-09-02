@@ -218,49 +218,51 @@ def load_pickle_file(filename):
     return file_content
 
 
-# load saved detections
-folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
-folder_path = Path(folder_name)
+if __name__ == '__main__':
+    # load saved detections
+    folder_name = '/home/gilad/work/poc_s/tracking/tracking_dataset/tracking_simple_case/BACK/'
+    folder_path = Path(folder_name)
 
-file_list = list(folder_path.iterdir())
-frames = []
+    file_list = list(folder_path.iterdir())
+    frames = []
 
-for file in file_list:
-    if file.suffix == '.pkl':
-        frame_detections = load_pickle_file(file)
-        frames.append(frame_detections)
-frames.sort(key=lambda d: d[0]['timestamp'])
+    for file in file_list:
+        if file.suffix == '.pkl':
+            frame_detections = load_pickle_file(file)
+            frames.append(frame_detections)
+    frames.sort(key=lambda d: d[0]['timestamp'])
 
-# perform tracking
-tracker = Tracker()
-for frame in frames:
-    tracker.tracking_iteration(frame)
-    tracker.log_detections_and_tracks()
+    # perform tracking
+    tracker = Tracker()
+    for frame in frames:
+        tracker.tracking_iteration(frame)
+        tracker.log_detections_and_tracks()
 
-tracker.save_log_to_csv()
+    tracker.save_log_to_csv()
 
-# plot results
-fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
+    # plot results
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
 
-colors = ['r', 'b', 'm', 'c', 'g']
-fig_limits = {'xmin': 1000, 'xmax': -1000, 'ymin': 1000, 'ymax': -1000, 'zmin': 1000, 'zmax': -1000}
-for frame, color in zip(tracker.track_log, colors):
-    for track_id, cluster in frame.items():
-        position = cluster['params']['position']
-        track_text = f'{track_id}'
-        # ax.scatter(position[0], position[1], position[2], c=color)
-        ax.text(position[0], position[1], position[2], track_text, size=10, color=color)
-        fig_limits['xmin'], fig_limits['xmax'] = min(fig_limits['xmin'], position[0]), max(fig_limits['xmax'], position[0])
-        fig_limits['ymin'], fig_limits['ymax'] = min(fig_limits['ymin'], position[1]), max(fig_limits['ymax'], position[1])
-        fig_limits['zmin'], fig_limits['zmax'] = min(fig_limits['zmin'], position[2]), max(fig_limits['zmax'], position[2])
+    colors = ['r', 'b', 'm', 'c', 'g']
+    fig_limits = {'xmin': 1000, 'xmax': -1000, 'ymin': 1000, 'ymax': -1000, 'zmin': 1000, 'zmax': -1000}
+    for frame, color in zip(tracker.track_log, colors):
+        for track_id, cluster in frame.items():
+            position = cluster['params']['position']
+            track_text = f'{track_id}'
+            # ax.scatter(position[0], position[1], position[2], c=color)
+            ax.text(position[0], position[1], position[2], track_text, size=10, color=color)
+            fig_limits['xmin'], fig_limits['xmax'] = min(fig_limits['xmin'], position[0]), max(fig_limits['xmax'],
+                                                                                               position[0])
+            fig_limits['ymin'], fig_limits['ymax'] = min(fig_limits['ymin'], position[1]), max(fig_limits['ymax'],
+                                                                                               position[1])
+            fig_limits['zmin'], fig_limits['zmax'] = min(fig_limits['zmin'], position[2]), max(fig_limits['zmax'],
+                                                                                               position[2])
 
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
-ax.set_xlim(fig_limits['xmin'] - 50, fig_limits['xmax'] + 50)
-ax.set_ylim(fig_limits['ymin'] - 50, fig_limits['ymax'] + 50)
-ax.set_zlim(fig_limits['zmin'] - 50, fig_limits['zmax'] + 50)
-plt.show()
-
-last_line = 0
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    ax.set_xlim(fig_limits['xmin'] - 50, fig_limits['xmax'] + 50)
+    ax.set_ylim(fig_limits['ymin'] - 50, fig_limits['ymax'] + 50)
+    ax.set_zlim(fig_limits['zmin'] - 50, fig_limits['zmax'] + 50)
+    plt.show()

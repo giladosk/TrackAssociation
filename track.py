@@ -86,7 +86,6 @@ class Tracker:
 
         # pre-calculate euclidean distances:
         euclidean_distances = self.calc_location_distances(detected_features)
-        # todo: also check vs python double-for loop on jetson
 
         # Calculate likelihoods based on Euclidean distance and other metrics
         for i, (_track_id, track_data) in enumerate(self.tracks.items()):
@@ -118,31 +117,35 @@ class Tracker:
         num_goods = _likelihood_matrix.shape[1]
 
         association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
-        best_prices = [0] * num_goods
+        valid_likelihoods = _likelihood_matrix[_likelihood_matrix > 0]
+        if valid_likelihoods.size == 0:
+            return association_matrix  # when all associations are invalid, return a matrix of zeros
+
+        best_prices = np.zeros(num_goods)
         bidders_queue = list(range(num_bidders))
-        epsilon_price = np.mean(abs(np.sort(_likelihood_matrix, axis=None))) / 10  # bid step ~(10th * data resolution)
+        epsilon_price = valid_likelihoods.mean() / 10  # bid extra increment
 
         num_iterations = 0
         while len(bidders_queue) > 0:
             num_iterations += 1
             bidder = bidders_queue.pop(0)  # take the first bidder in queue
-            desired_good = np.argmax(benefits := (_likelihood_matrix[bidder, :] - best_prices))
-            price_rise = benefits[desired_good]
-            if price_rise < epsilon_price:
+            benefits = _likelihood_matrix[bidder, :] - best_prices
+            sorted_benefits_indices = benefits.argsort()[::-1]
+            desired_good = sorted_benefits_indices[0]
+
+            if benefits[desired_good] < epsilon_price:
                 # when this bidder has no way to compete on any of the goods
                 continue
-            if not association_matrix[:, desired_good].any():
-                # first time assignment of a good
-                association_matrix[bidder, desired_good] = 1
-                best_prices[desired_good] += epsilon_price
-            elif association_matrix[bidder, desired_good] == 0:
-                # re-assignment for higher bid
-                # put previous bidder in end of queue, and set new bidder as the owner
+            if association_matrix[:, desired_good].any():
                 previous_owner = association_matrix[:, desired_good].argmax()
                 bidders_queue.append(previous_owner)
                 association_matrix[previous_owner, desired_good] = 0
-                association_matrix[bidder, desired_good] = 1
-                best_prices[desired_good] += epsilon_price
+            # else - detection currently not assigned so no need to un-assign anything
+
+            # assign the new bidder to this good
+            second_best_price_rise = max(benefits[sorted_benefits_indices[1]], 0) if num_goods > 1 else 0
+            association_matrix[bidder, desired_good] = 1
+            best_prices[desired_good] += benefits[desired_good] - second_best_price_rise + epsilon_price
 
         print(f'association_matrix=\n{association_matrix}')
         total_profit = 0

@@ -27,7 +27,7 @@ print(f'\ncost_matrix: \n{cost_matrix}\n')
 # rows = bidders (or owners), columns = goods
 num_bidders = cost_matrix.shape[0]
 num_goods = cost_matrix.shape[1]
-
+# TODO: update according to the logic in track.py
 association_matrix = np.zeros((num_bidders, num_goods), dtype=int)
 best_prices = [0] * num_goods
 bidders_queue = list(range(num_bidders))
